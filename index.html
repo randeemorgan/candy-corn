@@ -62,4 +62,237 @@ textarea{width:100%;min-height:150px;font:inherit;font-size:.95rem;padding:10px;
 <svg width="0" height="0" style="position:absolute" aria-hidden="true">
   <defs><clipPath id="ccClip"><path d="M30 3C36 3 40 9 44 22L55 60C58 70 54 75 47 75H13C6 75 2 70 5 60L16 22C20 9 24 3 30 3Z"/></clipPath></defs>
   <symbol id="cc" viewBox="0 0 60 78">
-    <g clip-path="url(#ccClip)"><rect width="60" height="78" fill="#ffd23f"/>
+    <g clip-path="url(#ccClip)"><rect width="60" height="78" fill="#ffd23f"/><rect width="60" height="52" fill="#ff9a1f"/><rect width="60" height="26" fill="#fffaf0"/></g>
+    <path d="M30 3C36 3 40 9 44 22L55 60C58 70 54 75 47 75H13C6 75 2 70 5 60L16 22C20 9 24 3 30 3Z" fill="none" stroke="#2b1250" stroke-width="2.5" stroke-linejoin="round"/>
+  </symbol>
+</svg>
+
+<main>
+  <!-- START -->
+  <section id="start">
+    <h1>Candy Corn Counting</h1>
+    <p class="note" style="font-size:1.1rem">Make-up activity</p>
+    <ul class="steps">
+      <li><b>1.</b> Touch each candy corn one time.</li>
+      <li><b>2.</b> Say one number for each one.</li>
+      <li><b>3.</b> The last number tells how many.</li>
+      <li><b>4.</b> Some questions use <b>+</b> and <b>&minus;</b>. Plus means put together. Minus means take away.</li>
+    </ul>
+    <p><label for="nm"><b>Type your name:</b></label></p>
+    <p><input type="text" id="nm" maxlength="30" autocomplete="off"></p>
+    <div class="row" style="justify-content:flex-start"><button class="btn" id="go" type="button">Start</button></div>
+  </section>
+
+  <!-- PLAY -->
+  <section id="play" hidden>
+    <div class="top"><div class="dots" id="dots" aria-hidden="true"></div><span class="note" id="qnum"></span></div>
+    <h2 id="head">Touch each one. How many candy corn?</h2>
+    <p class="center note" id="sub" style="margin-top:-6px"></p>
+    <div id="stage" aria-label="Candy corn to count"></div>
+    <div id="msg" aria-live="polite"></div>
+    <div class="answers" id="answers"></div>
+    <div class="row">
+      <button class="btn ghost" id="again" type="button">Count again</button>
+      <button class="btn" id="next" type="button" hidden>Next</button>
+    </div>
+  </section>
+
+  <!-- DONE -->
+  <section id="done" hidden>
+    <h1 class="center">Great counting!</h1>
+    <p class="center" id="sum"></p>
+    <div class="card">
+      <h3>Send your answers to your teacher</h3>
+      <p>Tap the button. Your email app will open with your answers ready. Press send.</p>
+      <div class="row" style="justify-content:flex-start">
+        <a class="btn" id="mail" href="#" style="text-decoration:none;display:inline-flex;align-items:center">Email my answers</a>
+        <button class="btn ghost" id="copy" type="button" style="color:var(--ink);border-color:#b9a6d8">Copy my answers</button>
+      </div>
+      <p class="note" style="color:#5a4876;margin-top:10px" id="copyNote" aria-live="polite">If the email does not open, tap Copy. Then paste it into a message to your teacher.</p>
+      <textarea id="report" readonly aria-label="My answers"></textarea>
+    </div>
+    <div class="row"><button class="btn ghost" id="restart" type="button">Do it again</button></div>
+  </section>
+</main>
+
+<script>
+(function(){
+"use strict";
+/* ---- Teacher: put your email here (inside the quotes) so the email button fills in the address. Leave blank to let students type it. ---- */
+var TEACHER_EMAIL = "";
+var ACTIVITY = "Candy Corn Counting make-up activity";
+
+var QUESTIONS = [
+  {n:3, layout:"line"}, {n:5, layout:"line"}, {n:4, layout:"scatter"}, {n:6, layout:"array"},
+  {n:7, layout:"line"}, {n:8, layout:"array"}, {n:9, layout:"array"}, {n:10, layout:"line"},
+  {type:"add", a:3, b:2}, {type:"add", a:4, b:3},
+  {type:"sub", n:5, k:2}, {type:"sub", n:9, k:4}
+];
+var MINI='<svg viewBox="0 0 60 78" aria-hidden="true"><use href="#cc" width="60" height="78"/></svg>';
+var $=function(s){return document.querySelector(s)};
+var state, q, results;
+
+function show(id){["start","play","done"].forEach(function(x){$("#"+x).hidden=(x!==id)});window.scrollTo(0,0)}
+function shuffle(a){for(var i=a.length-1;i>0;i--){var j=Math.floor(Math.random()*(i+1));var t=a[i];a[i]=a[j];a[j]=t}return a}
+
+function start(){
+  results=QUESTIONS.map(function(){return {first:null,help:false,recount:0}});
+  state=0; renderQ(); show("play");
+}
+function renderDots(){
+  var d=$("#dots"); d.innerHTML="";
+  QUESTIONS.forEach(function(_,i){var s=document.createElement("span");s.className="dot"+(i<state?" done":i===state?" now":"");d.appendChild(s)});
+  $("#qnum").textContent="Question "+(state+1)+" of "+QUESTIONS.length;
+}
+function candyBtn(i){
+  var b=document.createElement("button");
+  b.type="button";b.className="candy";b.setAttribute("aria-label","Candy corn");
+  b.innerHTML=MINI+'<span class="badge"></span>';
+  b.addEventListener("click",function(){tap(i)});
+  return b;
+}
+function renderQ(){
+  var Q=QUESTIONS[state], type=Q.type||"count";
+  q={type:type,c:0,counted:[],locked:false,done:false,wrong:false,els:[]};
+  if(type==="add"){q.n=Q.a+Q.b;q.total=q.n;q.head=Q.a+" + "+Q.b+" = ?";q.sub="Touch each one to count them all.";q.ask="How many in all?";q.yes="Yes! "+Q.a+" + "+Q.b+" = "+q.n}
+  else if(type==="sub"){q.n=Q.n-Q.k;q.total=Q.k;q.head=Q.n+" − "+Q.k+" = ?";q.sub="Touch "+Q.k+" to take them away.";q.ask="How many are left?";q.yes="Yes! "+Q.n+" − "+Q.k+" = "+q.n}
+  else{q.n=Q.n;q.total=Q.n;q.head="Touch each one. How many candy corn?";q.sub="";q.ask="How many candy corn?";q.yes="Yes! "+q.n+" candy corn."}
+  $("#head").textContent=q.head;$("#sub").textContent=q.sub;
+  var stage=$("#stage"); stage.innerHTML="";
+  var els=q.els,i;
+  if(type==="add"){
+    var pair=document.createElement("div");pair.className="pair";
+    var g1=document.createElement("div"),g2=document.createElement("div"),pl=document.createElement("span");
+    g1.className=g2.className="grp";pl.className="plus";pl.textContent="+";pl.setAttribute("aria-hidden","true");
+    for(i=0;i<q.n;i++){var b=candyBtn(i);els.push(b);(i<Q.a?g1:g2).appendChild(b);q.counted.push(0)}
+    pair.appendChild(g1);pair.appendChild(pl);pair.appendChild(g2);stage.appendChild(pair);
+  } else {
+    var wrap=document.createElement("div"); wrap.className=type==="sub"?"line":Q.layout;
+    stage.appendChild(wrap);
+    var cnt=type==="sub"?Q.n:q.n;
+    for(i=0;i<cnt;i++){var b2=candyBtn(i);els.push(b2);wrap.appendChild(b2);q.counted.push(0)}
+    if(type==="count"&&Q.layout==="scatter"){
+      var W=Math.min(stage.clientWidth-24,640)||320, H=270;
+      var cols=Math.ceil(Math.sqrt(q.n*(W/H))), rows=Math.ceil(q.n/cols);
+      var cells=[];for(var r=0;r<rows;r++)for(var c=0;c<cols;c++)cells.push([c,r]);
+      shuffle(cells).slice(0,q.n).forEach(function(cell,i){
+        var cw=W/cols, ch=H/rows;
+        var x=cell[0]*cw+(cw-54)/2+(Math.random()-.5)*Math.max(0,cw-70);
+        var y=cell[1]*ch+(ch-70)/2+(Math.random()-.5)*Math.max(0,ch-84);
+        var e=els[i];e.style.left=Math.max(0,x)+"px";e.style.top=Math.max(0,y)+"px";
+        e.style.transform="rotate("+Math.round((Math.random()-.5)*50)+"deg)";
+      });
+    }
+  }
+  $("#msg").textContent="";$("#answers").innerHTML="";
+  $("#next").hidden=true;$("#again").hidden=false;
+  renderDots();
+}
+function paint(){
+  q.els.forEach(function(el,i){
+    var v=q.counted[i],b=el.querySelector(".badge");
+    if(q.type==="sub"){
+      el.classList.toggle("gone",v>0);el.classList.remove("on");b.textContent="";
+      el.setAttribute("aria-label",v>0?"Candy corn taken away":"Candy corn");
+    } else {
+      el.classList.toggle("on",v>0);b.textContent=v>0?v:"";
+      el.setAttribute("aria-label",v>0?("Candy corn "+v):"Candy corn");
+    }
+  });
+}
+function tap(i){
+  if(q.locked||q.done)return;
+  if(q.counted[i]){results[state].recount++;var e=q.els[i];e.classList.remove("wob");void e.offsetWidth;e.classList.add("wob");return}
+  if(q.c>=q.total)return;
+  q.counted[i]=++q.c;paint();
+  if(q.c===q.total){setTimeout(showAnswers,500)}
+}
+function showAnswers(){
+  $("#msg").textContent=q.ask;
+  var n=q.n,pool=[];
+  for(var d=-2;d<=2;d++){var v=n+d;if(d!==0&&v>=1&&v<=12)pool.push(v)}
+  var opts=shuffle(pool).slice(0,2).concat([n]).sort(function(a,b){return a-b});
+  var box=$("#answers");box.innerHTML="";
+  opts.forEach(function(v){
+    var b=document.createElement("button");b.type="button";b.className="ans";b.textContent=v;
+    b.addEventListener("click",function(){answer(v,b)});box.appendChild(b);
+  });
+}
+function answer(v,btn){
+  if(q.done||q.locked)return;
+  if(v===q.n){
+    q.done=true;
+    if(results[state].first===null)results[state].first=!q.wrong;
+    btn.classList.add("right");
+    $$(".ans").forEach(function(b){b.disabled=true});
+    $("#msg").textContent=q.yes;
+    $("#again").hidden=true;
+    var nb=$("#next");nb.textContent=(state===QUESTIONS.length-1)?"Finish":"Next";nb.hidden=false;nb.focus();
+  } else {
+    q.wrong=true;results[state].first=false;results[state].help=true;
+    btn.disabled=true;btn.classList.add("miss");
+    $("#msg").textContent="Not yet. Let's count together.";
+    q.locked=true;
+    setTimeout(modelCount,1200);
+  }
+}
+function modelCount(){
+  q.counted=q.counted.map(function(){return 0});q.c=0;paint();
+  var k=0,Q=QUESTIONS[state];
+  function unlock(){q.locked=false;$("#msg").textContent="Now you pick: "+q.ask.toLowerCase()}
+  if(q.type==="sub"){
+    (function rm(){
+      if(k>=Q.k){$("#msg").textContent=Q.n+" take away "+Q.k+" leaves "+q.n+".";setTimeout(unlock,2400);return}
+      q.counted[k]=++q.c;paint();k++;setTimeout(rm,800);
+    })();
+    return;
+  }
+  (function step(){
+    if(k>=q.n){
+      $("#msg").textContent=(q.type==="add"?"Count them all. The last number is "+q.n+".":"The last number is "+q.n+". There are "+q.n+" candy corn.");
+      setTimeout(unlock,2200);
+      return;
+    }
+    q.counted[k]=k+1;paint();k++;setTimeout(step,800);
+  })();
+}
+function $$(s){return Array.prototype.slice.call(document.querySelectorAll(s))}
+
+function finish(){
+  var name=$("#nm").value.trim()||"A student";
+  var ok=results.filter(function(r){return r.first}).length;
+  var lines=[];
+  lines.push(ACTIVITY);
+  lines.push("Name: "+name);
+  lines.push("Date: "+new Date().toLocaleDateString());
+  lines.push("Got it right the first time: "+ok+" out of "+QUESTIONS.length);
+  lines.push("");
+  QUESTIONS.forEach(function(qq,i){
+    var r=results[i];
+    var desc=qq.type==="add"?(qq.a+" + "+qq.b+" = "+(qq.a+qq.b)):qq.type==="sub"?(qq.n+" - "+qq.k+" = "+(qq.n-qq.k)):(qq.n+" candy corn ("+qq.layout+")");
+    lines.push((i+1)+". "+desc+": "+(r.first?"right on first try":"needed help to count")+(r.recount?", touched an already-counted one "+r.recount+"x":""));
+  });
+  var text=lines.join("\n");
+  $("#report").value=text;
+  $("#sum").textContent=name+", you got "+ok+" out of "+QUESTIONS.length+" right on the first try.";
+  var subj=encodeURIComponent(ACTIVITY+" - "+name);
+  $("#mail").href="mailto:"+encodeURIComponent(TEACHER_EMAIL).replace(/%40/g,"@")+"?subject="+subj+"&body="+encodeURIComponent(text);
+  show("done");
+}
+
+$("#go").addEventListener("click",start);
+$("#nm").addEventListener("keydown",function(e){if(e.key==="Enter")start()});
+$("#again").addEventListener("click",function(){if(q.locked||q.done)return;renderQ()});
+$("#next").addEventListener("click",function(){state++;if(state>=QUESTIONS.length)finish();else renderQ()});
+$("#restart").addEventListener("click",function(){show("start")});
+$("#copy").addEventListener("click",function(){
+  var ta=$("#report"),note=$("#copyNote");
+  function fallback(){ta.focus();ta.select();note.textContent="Your answers are selected. Press Ctrl+C (or Cmd+C) to copy."}
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(ta.value).then(function(){note.textContent="Copied! Now paste it into a message to your teacher."},fallback);
+  } else fallback();
+});
+})();
+</script>
+</body>
+</html>
